@@ -384,52 +384,177 @@ else:
     st.info("Add a Discount column to view Discount Level vs Profit.")
 
 
-section_heading("4", "Business recommendations", "Rule-based prompts to help prioritise the next question to investigate.")
+
+section_heading(
+    "4",
+    "Business recommendations",
+    "Five rule-based insights to help prioritise the next question to investigate."
+)
+
 recommendations = []
+
+# 1. Top-performing category by total profit
 if "category" in filtered_df.columns:
-    cat_profit = filtered_df.groupby("category")["profit"].sum().sort_values(ascending=False)
-    if not cat_profit.empty:
-        best_category = cat_profit.index[0]
+    cat_data = filtered_df.groupby("category").agg(
+        Total_Profit=("profit", "sum"),
+        Total_Sales=("sales", "sum")
+    )
+
+    if not cat_data.empty:
+        best_category = cat_data["Total_Profit"].idxmax()
+        best_profit = cat_data.loc[best_category, "Total_Profit"]
+
         recommendations.append((
             "Top-performing category",
-            f"Review what is working in {best_category}. Consider validating its pricing, product mix and stock availability before scaling similar practices."
+            f"{best_category} generates the highest total profit "
+            f"among the selected records ({best_profit:,.2f}). "
+            "Review its product mix, pricing and stock availability."
         ))
-        loss_categories = cat_profit[cat_profit < 0]
-        if not loss_categories.empty:
-            loss_names = ", ".join(map(str, loss_categories.index[:4]))
-            recommendations.append((
-                "Investigate loss-making categories",
-                f"Check discounts, supplier costs and product-level margins in: {loss_names}."
-            ))
-if "region" in filtered_df.columns:
-    reg_profit = filtered_df.groupby("region")["profit"].sum().sort_values()
-    if not reg_profit.empty:
-        weakest_region = reg_profit.index[0]
-        weakest_value = reg_profit.iloc[0]
-        recommendations.append((
-            "Regional performance review",
-            f"Review costs, product mix and pricing in {weakest_region}. Its total profit is {weakest_value:,.0f} for the selected records."
-        ))
-if profit_margin < 10:
-    recommendations.append((
-        "Protect profitability",
-        f"The current profit margin is {profit_margin:.2f}%. Review discounting and high-cost items to understand the pressure on margin."
-    ))
-if not recommendations:
-    recommendations.append((
-        "Unlock deeper insights",
-        "Add Category, Region and Order Date fields to your dataset for more detailed comparisons."
-    ))
 
-rec_cols = st.columns(min(3, len(recommendations)))
-for i, (title, copy) in enumerate(recommendations):
-    with rec_cols[i % len(rec_cols)]:
-        st.markdown(
-            f'<div class="insight-card"><div class="insight-label">Insight {i+1:02d}</div>'
-            f'<div class="insight-title">{title}</div><div class="insight-copy">{copy}</div></div>',
-            unsafe_allow_html=True,
+        # 2. Lowest category profit margin
+        cat_data["Profit_Margin"] = (
+            cat_data["Total_Profit"]
+            .div(cat_data["Total_Sales"].replace(0, float("nan")))
+            * 100
         )
-st.caption("Recommendations are generated from simple rules and should be validated before making business decisions.")
+
+        valid_categories = cat_data.dropna(subset=["Profit_Margin"])
+
+        if not valid_categories.empty:
+            weakest_category = valid_categories["Profit_Margin"].idxmin()
+            weakest_margin = valid_categories.loc[
+                weakest_category, "Profit_Margin"
+            ]
+
+            recommendations.append((
+                "Category margin review",
+                f"{weakest_category} has the lowest profit margin "
+                f"({weakest_margin:.2f}%) among the selected records. "
+                "Review costs, pricing and discount strategy."
+            ))
+
+# 3. Highest-profit region
+if "region" in filtered_df.columns:
+    reg_data = filtered_df.groupby("region").agg(
+        Total_Profit=("profit", "sum"),
+        Total_Sales=("sales", "sum")
+    )
+
+    if not reg_data.empty:
+        best_region = reg_data["Total_Profit"].idxmax()
+        best_region_profit = reg_data.loc[best_region, "Total_Profit"]
+
+        recommendations.append((
+            "Regional performance",
+            f"{best_region} contributes the highest total profit "
+            f"({best_region_profit:,.2f}) among the selected records. "
+            "Identify practices that may be transferable to other regions."
+        ))
+
+        # 4. Lowest regional profit margin
+        reg_data["Profit_Margin"] = (
+            reg_data["Total_Profit"]
+            .div(reg_data["Total_Sales"].replace(0, float("nan")))
+            * 100
+        )
+
+        valid_regions = reg_data.dropna(subset=["Profit_Margin"])
+
+        if not valid_regions.empty:
+            weakest_region = valid_regions["Profit_Margin"].idxmin()
+            weakest_region_margin = valid_regions.loc[
+                weakest_region, "Profit_Margin"
+            ]
+
+            recommendations.append((
+                "Regional margin review",
+                f"{weakest_region} has the lowest profit margin "
+                f"({weakest_region_margin:.2f}%) among the selected records. "
+                "Investigate regional costs, product mix and pricing."
+            ))
+
+# 5. Lowest-margin discount band
+if "discount" in filtered_df.columns:
+    discount_data = filtered_df.copy()
+    discount_data["discount"] = pd.to_numeric(
+        discount_data["discount"], errors="coerce"
+    )
+
+    # Match the discount bands used in the Colab notebook
+    discount_data["discount_band"] = pd.cut(
+        discount_data["discount"],
+        bins=[-float("inf"), 0.10, 0.20, 0.30, float("inf")],
+        labels=[
+            "Low (10% or less)",
+            "Medium (10–20%)",
+            "High (20–30%)",
+            "Very High (above 30%)"
+        ],
+        include_lowest=True
+    )
+
+    if not discount_data.empty:
+        discount_data["profit"] = pd.to_numeric(
+            discount_data["profit"], errors="coerce"
+        )
+        discount_data["sales"] = pd.to_numeric(
+            discount_data["sales"], errors="coerce"
+        )
+
+        discount_summary = discount_data.groupby(
+            "discount_band", observed=True
+        ).agg(
+            Total_Profit=("profit", "sum"),
+            Total_Sales=("sales", "sum")
+        )
+
+        discount_summary["Profit_Margin"] = (
+            discount_summary["Total_Profit"]
+            .div(discount_summary["Total_Sales"].replace(0, float("nan")))
+            * 100
+        )
+
+        valid_bands = discount_summary.dropna(subset=["Profit_Margin"])
+
+        if not valid_bands.empty:
+            weakest_band = valid_bands["Profit_Margin"].idxmin()
+            weakest_band_margin = valid_bands.loc[
+                weakest_band, "Profit_Margin"
+            ]
+
+            recommendations.append((
+                "Discount strategy review",
+                f"{weakest_band} has the lowest profit margin "
+                f"({weakest_band_margin:.2f}%) among the selected records. "
+                "Check whether sales volume justifies the reduced margin."
+            ))
+
+# Display recommendation cards in the existing website style
+if recommendations:
+    rec_cols = st.columns(2)
+
+    for i, (title, copy) in enumerate(recommendations):
+        with rec_cols[i % 2]:
+            st.markdown(
+                f'<div class="insight-card">'
+                f'<div class="insight-label">INSIGHT {i + 1:02d}</div>'
+                f'<div class="insight-title">{title}</div>'
+                f'<div class="insight-copy">{copy}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+else:
+    st.info(
+        "Not enough relevant data to generate business recommendations. "
+        "Check that the dataset contains category, region, sales, profit "
+        "and discount columns."
+    )
+
+st.caption(
+    "Recommendations are generated using simple rules from the selected "
+    "records. Validate the findings before making business decisions."
+)
+
 
 section_heading("5", "Download your results", "Export the filtered dataset and a compact KPI summary for your report.")
 d1, d2 = st.columns(2)
