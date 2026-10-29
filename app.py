@@ -331,6 +331,59 @@ if "order_date" in filtered_df.columns:
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
+
+# Discount Level vs Profit scatter plot
+if "discount" in filtered_df.columns:
+    with st.container():
+        st.markdown("### Discount Level vs Profit")
+        st.caption("Explore the relationship between discount percentages and profit.")
+
+        discount_data = filtered_df.copy()
+        discount_data["discount"] = pd.to_numeric(
+            discount_data["discount"], errors="coerce"
+        )
+        discount_data = discount_data.dropna(
+            subset=["discount", "profit"]
+        )
+
+        if not discount_data.empty:
+            fig, ax = plt.subplots(figsize=(12, 4.5))
+            fig.patch.set_facecolor(WHITE)
+            ax.set_facecolor(WHITE)
+
+            ax.scatter(
+                discount_data["discount"] * 100,
+                discount_data["profit"],
+                color=RED,
+                alpha=0.45,
+                s=24,
+                edgecolors="none"
+            )
+
+            ax.set_title(
+                "Discount Level vs Profit",
+                loc="left",
+                pad=15,
+                fontsize=13,
+                color=INK,
+                fontweight="bold"
+            )
+            ax.set_xlabel("Discount (%)")
+            ax.set_ylabel("Profit")
+
+            style_axis(ax)
+            ax.grid(True, linestyle="--", linewidth=0.7,
+                    alpha=0.45, color=BORDER)
+
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+        else:
+            st.info("No valid discount and profit values are available.")
+else:
+    st.info("Add a Discount column to view Discount Level vs Profit.")
+
+
 section_heading("4", "Business recommendations", "Rule-based prompts to help prioritise the next question to investigate.")
 recommendations = []
 if "category" in filtered_df.columns:
